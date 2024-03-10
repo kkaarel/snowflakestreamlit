@@ -1,0 +1,80 @@
+name: Snowflake Workflow
+
+on:
+  push:
+    branches: [ dev ]
+
+env:
+  SNOWSQL_ACCOUNT: ${{ secrets.ACCOUNT_REGION_PLATFORM }}
+  SNOWSQL_USER:  ${{ secrets.SNOWFLAKE_USERNAME }}
+  SNOWSQL_PWD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+  SNOWSQL_SCHEMA: "STREAMLIT_DEV"
+  SNOWSQL_WAREHOUSE: "COMPUTE_WH"
+  SNOWSQL_DATABASE: "STREAMLIT_DEV"
+  SNOWSQL_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Install SnowSQL
+      run: |
+          curl -O https://sfc-repo.snowflakecomputing.com/snowsql/bootstrap/1.2/linux_x86_64/snowsql-1.2.9-linux_x86_64.bash
+          SNOWSQL_DEST=~/bin SNOWSQL_LOGIN_SHELL=~/.profile bash snowsql-1.2.9-linux_x86_64.bash
+
+    - name: Create Profile
+      run: |
+        echo "[connections.streamlit]
+          accountname = $SNOWSQL_ACCOUNT
+          username = $SNOWSQL_USER
+          password = $SNOWSQL_PWD
+          schema = $SNOWSQL_SCHEMA
+          warehouse = $SNOWSQL_WAREHOUSE
+          rolename = $SNOWSQL_ROLE
+          dbname = $SNOWSQL_DATABASE" > ~/.snowsql/config
+          
+    - name: Login
+      run: | 
+        ~/bin/snowsql -c streamlit  
+        
+    - name: Use destination database & schema
+      run: |
+        ~/bin/snowsql -q "USE ROLE $SNOWSQL_ROLE;"
+        ~/bin/snowsql -q "USE WAREHOUSE $SNOWSQL_WAREHOUSE;"
+        ~/bin/snowsql -q "USE DATABASE $SNOWSQL_DATABASE;"
+        ~/bin/snowsql -q "USE SCHEMA $SNOWSQL_SCHEMA;"
+      
+    - name: Create stages
+      run: |
+  
+        for stage_name in $(find streamlit -mindepth 1 -maxdepth 1 -type d -print | sed 's,streamlit/,,'); do
+          ~/bin/snowsql -q "CREATE OR REPLACE STAGE $stage_name;"
+          if [ $? -ne 0 ]; then
+            echo "Error creating stage: $stage_name"
+            exit 1
+          else
+            echo "Created Stage: $stage_name"
+          fi
+        done
+
+    - name: Upload files to the stage
+      run: |
+
+        for file_path in $(find streamlit -type f); do
+          stage_name=$(echo $file_path | cut -d'/' -f2)
+          ~/bin/snowsql -q "put file://$file_path @$stage_name overwrite=true auto_compress=false;"
+          echo "Added file: $file_path to stage $stage_name"
+        done
+    
+    - name: Create Streamlit 
+      run: |
+        for stage_name in $(find streamlit -mindepth 1 -maxdepth 1 -type d -print | sed 's,streamlit/,,'); do
+          ~/bin/snowsql -q "CREATE OR REPLACE STREAMLIT $SNOWSQL_DATABASE.$SNOWSQL_SCHEMA.$stage_name ROOT_LOCATION = '@$SNOWSQL_DATABASE.$SNOWSQL_SCHEMA.$stage_name' MAIN_FILE = '/app.py' QUERY_WAREHOUSE = 'COMPUTE_WH';"
+          echo "Create streamlit: $stage_name"
+        done
+
