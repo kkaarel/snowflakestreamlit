@@ -2,7 +2,7 @@ name: Snowflake Workflow
 
 on:
   push:
-    branches: [ dev ]
+    branches: [ main ]
 
 env:
   SNOWSQL_ACCOUNT: ${{ secrets.ACCOUNT_REGION_PLATFORM }}
