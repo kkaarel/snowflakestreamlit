@@ -9,10 +9,12 @@ Note:
 
 Add these to your secrets
 
-´´´
+```
+
   SNOWSQL_ACCOUNT: ${{ secrets.ACCOUNT_REGION_PLATFORM }}
   SNOWSQL_USER:  ${{ secrets.SNOWFLAKE_USERNAME }}
   SNOWSQL_PWD: ${{ secrets.SNOWFLAKE_PASSWORD }}
   SNOWSQL_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
 
-´´´
+
+``` 
